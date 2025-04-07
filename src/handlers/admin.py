@@ -21,9 +21,8 @@ class EditMess(StatesGroup):
 @admin_router.message(Command('get_users'))
 async def get_users(message: Message, db: Database):
     users = await db.get_all_users()
-    stats_text = "\n".join([f"@{user.username}: {user.count_token_used} запрос" for user in users])
+    stats_text = "\n".join([f"{count+1}. @{user.username}: {user.count_token_used} запрос" for count, user in enumerate(users) ] )
     await message.answer(f"📊 Статистика пользователей:\n{stats_text}")
-
 
 
 @admin_router.message(Command("set_start"))
