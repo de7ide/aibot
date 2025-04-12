@@ -4,8 +4,8 @@ from aiogram.filters import Command, StateFilter, or_f
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from database.orm_query import Database
+from keyboards.kb import get_callback_btns
 from filter.admin import IsAdmin
 
 
@@ -61,3 +61,112 @@ async def set_anal_mess(message: Message, state: FSMContext, db: Database):
 
     await state.clear()
     await message.answer("✅ Cообщение перед анализом успешно обновлено!")
+
+
+class EditSub(StatesGroup):
+    waiting_choise = State()
+    edit_sub = State()
+    edit_name = State()
+    edit_description = State()
+    edit_price = State()
+    del_sub = State()
+
+
+class AddSub(StatesGroup):
+    add_name = State()
+    add_description = State()
+    add_price = State()
+
+
+@admin_router.message(Command("edit_sub"))
+async def edit_sub(message: Message, db: Database, state: FSMContext):
+    await state.clear()
+    products = await db.get_all_product()
+    btns = {f"{count+1}. {product.name}" : f"product_id_{product.id}" for count, product in enumerate(products)}
+    dop_btns = {"➕ Добавить тариф" : "add_sub"}
+    btns = {**btns, **dop_btns}
+    await message.answer("Выберите тариф, который хотите изменить: ",
+                         reply_markup=get_callback_btns(btns=btns))
+    await state.set_state(EditSub.waiting_choise)
+
+
+@admin_router.callback_query(F.data == "add_sub")
+async def add_sub_pressed(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await callback.message.answer("Введите название тарифа...")
+    await state.set_state(AddSub.add_name)
+
+
+@admin_router.message(F.text, AddSub.add_name)
+async def edit_sub_name(message: Message, state: FSMContext):
+    await state.update_data(name=message.text)
+    await message.answer("Введите описание тарифа....")
+    await state.set_state(AddSub.add_description)
+
+
+@admin_router.message(F.text, AddSub.add_description)
+async def edit_sub_description(message: Message, state: FSMContext):
+    await state.update_data(description=message.text)
+    await state.set_state(AddSub.add_price)
+    await message.answer("Введите цену за тариф....")
+
+
+@admin_router.message(F.text.isdigit(), AddSub.add_price)
+async def edit_sub_price(message: Message, state: FSMContext, db: Database):
+    await state.update_data(price=message.text)
+    data = await state.get_data()
+
+    await db.add_sub(data)
+    await message.answer(f"✅Тариф успешно добавлен!")
+    await state.clear()
+
+
+
+@admin_router.callback_query(F.data.startswith("product_id_"), EditSub.waiting_choise)
+async def choise_product_for_choise(callback: CallbackQuery, db: Database, state: FSMContext):
+    product_id = callback.data.split("_")[-1]
+    await state.update_data(product_id=product_id)
+    product = await db.get_product_by_id(product_id=product_id)
+    await callback.message.edit_text(f"{product.name}\n\n{product.description}\n\nЦена: <b>{product.price}</b>руб.",
+                                     reply_markup=get_callback_btns(btns={"✏️ Изменить наполнение тарифа": f"edit_prod_id_{product_id}",
+                                                                          "❌ Удалить тариф": f"del_prod_id_{product_id}"}))
+    await state.set_state(EditSub.edit_sub)
+
+
+@admin_router.callback_query(F.data.startswith("edit_prod_id_"), EditSub.edit_sub)
+async def edit_sub_pressed(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await callback.message.answer("Введите название тарифа....")
+
+
+@admin_router.message(F.text, EditSub.edit_sub)
+async def edit_sub_name(message: Message, state: FSMContext):
+    await state.update_data(name=message.text)
+    await message.answer("Введите описание тарифа....")
+    await state.set_state(EditSub.edit_description)
+
+
+@admin_router.message(F.text, EditSub.edit_description)
+async def edit_sub_description(message: Message, state: FSMContext):
+    await state.update_data(description=message.text)
+    await state.set_state(EditSub.edit_price)
+    await message.answer("Введите цену за тариф....")
+
+
+@admin_router.message(F.text.isdigit(), EditSub.edit_price)
+async def edit_sub_price(message: Message, state: FSMContext, db: Database):
+    await state.update_data(price=message.text)
+    data = await state.get_data()
+
+    await db.edit_sub(data)
+    await message.answer(f"✅Тариф успешно изменен!")
+    await state.clear()
+
+
+@admin_router.callback_query(F.data.startswith("del_prod_id"), EditSub.edit_sub)
+async def dell_sub_pressed(callback: CallbackQuery, db: Database, state: FSMContext):
+    await callback.answer()
+    data = await state.get_data()
+    await state.clear()
+    await db.dell_sub(produc_id=data['product_id'])
+    await callback.message.edit_text(f"✅Тариф успешно удален!")

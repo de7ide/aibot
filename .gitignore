@@ -1,2 +1,6 @@
 venv
 __pycache__/
+src/migration
+alembic.ini
+src/my_base.db
+.env

@@ -6,6 +6,8 @@ from environs import Env
 class TgBot:
     token: str
     admin_ids: list[int]
+    yookassa: str
+
 
 
 @dataclass
@@ -28,7 +30,8 @@ def load_config() -> Config:
     return Config(
         tg_bot=TgBot(
             token=env("BOT_TOKEN"),
-            admin_ids=list(map(int, env.list('ADMIN_IDS')))
+            admin_ids=list(map(int, env.list('ADMIN_IDS'))),
+            yookassa=env("YOOKASSA_TOKEN")
         ),
         claud=ClaudConf(
             api_url=env("API_URL"),

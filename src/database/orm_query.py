@@ -2,7 +2,7 @@ from typing import Optional
 from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import User, Settings, SettingsAnalisys
+from database.models import User, Settings, SettingsAnalisys, Product, Purchase
 
 
 class Database:
@@ -15,7 +15,9 @@ class Database:
         if not user:
             user = User(
                 id=id,
-                username=username
+                username=username,
+                count_token_used=0,
+                available_tokens=2,
             )
             self.session.add(user)
         await self.session.commit()
@@ -29,17 +31,62 @@ class Database:
 
     # Атомарное обновление
         query = (
-            update(User).where(User.id == id).values(count_token_used=User.count_token_used + 1)
+            update(User).where(User.id == id).values(count_token_used=User.count_token_used + 1,
+                                                    available_tokens=User.available_tokens - 1)
     )
 
         await self.session.execute(query)
         await self.session.commit()
 
 
+    # async def add_count_to_available_token(self, id: int):
+    #     user_exists = await self.session.execute(
+    #     select(User.id).where(User.id == id))
+    #     if not user_exists.scalar():
+    #         raise ValueError("User not found")  # Или кастомное исключение
+
+    # # Атомарное обновление
+    #     query = (
+    #         update(User).where(User.id == id).values(available_tokens=User.available_tokens + 1)
+    # )
+
+    #     await self.session.execute(query)
+    #     await self.session.commit()
+
+
     async def get_all_users(self):
         query = select(User).order_by(User.count_token_used.desc())
         result = await self.session.execute(query)
         return result.scalars().all()
+
+
+    async def get_user_by_id(self, user_id):
+        query = select(User).where(User.id == user_id)
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+
+    async def get_tokens(self, user_id: int):
+        query = select(User.count_token_used).where(User.id == user_id)
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+
+    async def get_available_tokens(self, user_id: int):
+        query = select(User.available_tokens).where(User.id == user_id)
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+
+    async def update_available_token_to_null(self, user_id: int):
+        result = await self.session.execute(update(User).where(User.id == user_id).values(available_tokens=0))
+        await self.session.commit()
+
+
+    async def set_available_token(self, user_id, tokens):
+        query = update(User).where(User.id == user_id).values(available_tokens=tokens)
+        result = await self.session.execute(query)
+        await self.session.commit()
 
 
     async def get_start_message(self):
@@ -105,4 +152,57 @@ class Database:
         else:
             settings.analysis_message = new_message
 
+        await self.session.commit()
+
+
+    #Product
+    async def get_all_product(self):
+        result = await self.session.execute(select(Product))
+        products = result.scalars().all()
+        return products
+
+
+    async def get_product_by_id(self, product_id):
+        query = select(Product).where(Product.id == product_id)
+        result = await self.session.execute(query)
+        return result.scalar()
+
+
+    async def add_sub(self, data: dict):
+        sub = Product(
+            name=data["name"],
+            description=data["description"],
+            price=data["price"]
+        )
+        self.session.add(sub)
+        await self.session.commit()
+
+
+    async def edit_sub(self, data: dict):
+        query = update(Product).where(
+            Product.id == data["product_id"]
+            ).values(
+            name=data["name"],
+            description=data["description"],
+            price=data["price"]
+            )
+        await self.session.execute(query)
+        await self.session.commit()
+
+
+    async def dell_sub(self, produc_id: int):
+        query = delete(Product).where(Product.id == produc_id)
+        await self.session.execute(query)
+        await self.session.commit()
+
+
+    #Purchase
+    async def add_purchase(self, data: dict):
+        purchase = Purchase(
+            user_id=data["user_id"],
+            payment_id=data["payment_id"],
+            price=data["price"],
+            product_id=data["product_id"]
+        )
+        self.session.add(purchase)
         await self.session.commit()
